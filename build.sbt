@@ -18,9 +18,11 @@ lazy val symdex = (project in file("."))
   .dependsOn(okayMcp, okayCodec)
   .settings(
     name := "symdex",
+    // symdex's own sources are indexed too: the test fixtures under
+    // src/test/scala/fixture are read back from the SemanticDB the
+    // compiler writes beside the classes
+    semanticdbEnabled := true,
     libraryDependencies ++= Seq(
-      // TASTy read without a compiler: the Scala layer's source of truth
-      "ch.epfl.scala" %% "tasty-query" % "1.6.1",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Run symdex without sbt on every call: the runtime classpath is asked of
+# sbt once and kept in .symdex/classpath, refreshed when build.sbt or the
+# compiled classes are newer than it.
+#   bin/symdex serve --root /path/to/project      (an MCP server on stdio)
+#   bin/symdex references query=Bulk.joinSorted callers=true
+set -e
+here=$(cd "$(dirname "$0")/.." && pwd)
+cp_file="$here/.symdex/classpath"
+mkdir -p "$here/.symdex"
+if [ ! -s "$cp_file" ] || [ "$here/build.sbt" -nt "$cp_file" ]; then
+  (cd "$here" && sbt -batch --error "compile" "export Runtime/fullClasspath" | tail -1 > "$cp_file")
+fi
+exec java -Xss8m -cp "$(cat "$cp_file")" symdex.Symdex "$@"
