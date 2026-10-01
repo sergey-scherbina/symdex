@@ -1,4 +1,4 @@
-# loupe v0 — structural code intelligence over MCP
+# symdex v0 — structural code intelligence over MCP
 
 Status: DRAFT (2026-10-01). Nothing below is built yet; boxes are checked
 as tests cover them.
@@ -10,11 +10,11 @@ finding things: where a symbol is defined, who calls it, which `given` a
 call site actually gets, which modules a change reaches. grep answers by
 text, so it misses renamed imports, extension methods, givens, overloads
 and inherited members, and it floods on common names. The compiler
-already knows all of it, exactly, and writes it down. loupe reads what
+already knows all of it, exactly, and writes it down. symdex reads what
 the compiler wrote and answers those questions over MCP.
 
 Not retrieval: rozum's `rag.search` ranks chunks for a concept or a
-symptom. loupe answers "who calls this" with a list that is complete or
+symptom. symdex answers "who calls this" with a list that is complete or
 says it is not.
 
 ## Sources
@@ -26,11 +26,11 @@ says it is not.
   its range: what references and call sites need. TASTy has the trees,
   SemanticDB has the positions as written; both are needed.
 - **sbt's own model** — projects, their `dependsOn`, source dirs, class
-  dirs. Exported by a small sbt plugin (`loupeExport`), no parsing of
+  dirs. Exported by a small sbt plugin (`symdexExport`), no parsing of
   build.sbt.
 - v1: **SCIP** indexes for other languages (scip-java, scip-typescript,
   scip-python, rust-analyzer), ingested into the same symbol/occurrence
-  model. loupe writes no per-language analyzer.
+  model. symdex writes no per-language analyzer.
 
 ## Tools (v0)
 
@@ -38,19 +38,19 @@ Few and exact; every tool is context an agent pays for (Quill's 50+ is
 the counter-example). Each answer names the generation it came from and
 its age.
 
-- [ ] `loupe.definition(symbol | file:line:col)` — where it is defined,
+- [ ] `symdex.definition(symbol | file:line:col)` — where it is defined,
       its signature and doc comment.
-- [ ] `loupe.references(symbol)` — every occurrence, grouped by file;
+- [ ] `symdex.references(symbol)` — every occurrence, grouped by file;
       `callers` is the same filtered to call sites.
-- [ ] `loupe.implementations(symbol)` — subclasses, overriding members,
+- [ ] `symdex.implementations(symbol)` — subclasses, overriding members,
       `given` instances of a typeclass.
-- [ ] `loupe.givens(file:line:col)` — which givens the compiler resolved
+- [ ] `symdex.givens(file:line:col)` — which givens the compiler resolved
       at that call site (from SemanticDB synthetics).
-- [ ] `loupe.members(type)` — declared and inherited members, extensions
+- [ ] `symdex.members(type)` — declared and inherited members, extensions
       in scope included.
-- [ ] `loupe.modules(path | project)` — which project owns a path, what it
+- [ ] `symdex.modules(path | project)` — which project owns a path, what it
       depends on, what depends on it (the "affected" question).
-- [ ] `loupe.status` — generations, their age against the sources, what is
+- [ ] `symdex.status` — generations, their age against the sources, what is
       stale.
 
 Symbol names are SemanticDB's (`okay/Free#flatMap().`), with a fuzzy
@@ -59,7 +59,7 @@ lookup from a plain name that returns candidates rather than guessing.
 ## Freshness
 
 - [ ] An index is a GENERATION: built whole, immutable, swapped in
-      atomically under `.loupe/`. A query never sees a half-built index.
+      atomically under `.symdex/`. A query never sees a half-built index.
 - [ ] Building is incremental per class directory (hash of its
       `.tasty`/`.semanticdb` files); an unchanged module is reused.
 - [ ] The sbt plugin rebuilds after `compile`; nothing else is a trigger.
@@ -75,10 +75,10 @@ files) is within 2x of SQLite; whatever is missing goes into okay.
 
 ## The measure
 
-loupe ships only what moves this number. Take real tasks from okay's own
+symdex ships only what moves this number. Take real tasks from okay's own
 history (e.g. "every caller of `Bulk.joinSorted`", "which modules does a
 change to `Tables.scala` reach", "which `given Ordering` does this
-`sortByKey` get"), run each with grep/Read only and with loupe, and
+`sortByKey` get"), run each with grep/Read only and with symdex, and
 record tool calls, tokens and correctness (missed or false hits against
 a hand-checked answer).
 
@@ -89,14 +89,14 @@ a hand-checked answer).
 
 - MCP server features the tools need (structured results, pagination).
 - The store, if okay's wins the storage measurement.
-- Nothing about TASTy or SemanticDB — that is loupe's.
+- Nothing about TASTy or SemanticDB — that is symdex's.
 
 ## Decisions
 
 - TASTy over bytecode: bytecode erases what Scala users ask about
   (givens, extensions, opaque types, inline).
 - SCIP for other languages instead of writing analyzers.
-- Separate repository, okay as a submodule: loupe is a product on okay,
+- Separate repository, okay as a submodule: symdex is a product on okay,
   like okay-chat; it must not grow okay's build.
 
 ## Results

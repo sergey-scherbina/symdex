@@ -2,5 +2,5 @@ target/
 .bsp/
 .idea/
 .metals/
-.loupe/
+.symdex/
 project/project/

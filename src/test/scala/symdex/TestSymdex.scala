@@ -1,8 +1,8 @@
-package loupe
+package symdex
 
-class TestLoupe extends munit.FunSuite:
+class TestSymdex extends munit.FunSuite:
   test("the build resolves okay and tasty-query") {
-    assertEquals(Loupe.version, "0.0.0")
+    assertEquals(Symdex.version, "0.0.0")
     assert(classOf[tastyquery.Contexts.Context] != null)
     assert(okay.mcp.Server.getClass != null)
   }

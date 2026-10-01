@@ -1,9 +1,9 @@
 /*
- * loupe — structural code intelligence for agents, built on okay.
+ * symdex — structural code intelligence for agents, built on okay.
  *
  * okay rides as a git SUBMODULE (`okay/`) and its modules are referenced
  * as ProjectRefs, the arrangement okay-chat uses: one checkout, no
- * published artifact, and a change loupe needs in okay is made in okay
+ * published artifact, and a change symdex needs in okay is made in okay
  * (its own repository, its own gate) and the submodule moved.
  */
 ThisBuild / scalaVersion := "3.9.0"
@@ -14,10 +14,10 @@ ThisBuild / scalacOptions ++= Seq("-Wunused:all", "-Werror")
 lazy val okayMcp = ProjectRef(file("okay"), "okayMcpJVM")
 lazy val okayCodec = ProjectRef(file("okay"), "okayCodecJVM")
 
-lazy val loupe = (project in file("."))
+lazy val symdex = (project in file("."))
   .dependsOn(okayMcp, okayCodec)
   .settings(
-    name := "loupe",
+    name := "symdex",
     libraryDependencies ++= Seq(
       // TASTy read without a compiler: the Scala layer's source of truth
       "ch.epfl.scala" %% "tasty-query" % "1.6.1",
