@@ -18,7 +18,7 @@ lazy val symdex = (project in file("."))
   .dependsOn(okayMcp, okayCodec)
   .settings(
     name := "symdex",
-    version := "0.4.0",
+    version := "0.5.0",
     // symdex's own sources are indexed too: the test fixtures under
     // src/test/scala/fixture are read back from the SemanticDB the
     // compiler writes beside the classes
@@ -52,6 +52,16 @@ symdex / stage := {
       |exec java -Xss8m ${SYMDEX_JAVA_OPTS:-} -cp "$here/lib/*" symdex.Symdex "$@"
       |""".stripMargin)
   script.setExecutable(true)
+  val hook = out / "bin" / "symdex-hook"
+  IO.write(hook,
+    """#!/bin/sh
+      |# Claude Code PostToolUse hook (matcher "Bash|Grep"); small outputs never start a JVM
+      |input=$(cat)
+      |[ ${#input} -lt 12000 ] && exit 0
+      |here=$(cd "$(dirname "$0")/.." && pwd)
+      |printf '%s' "$input" | exec "$here/bin/symdex" hook
+      |""".stripMargin)
+  hook.setExecutable(true)
   out
 }
 
