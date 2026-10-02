@@ -1,14 +1,13 @@
 #!/bin/sh
-# Run symdex without sbt on every call: the runtime classpath is asked of
-# sbt once and kept in .symdex/classpath, refreshed when build.sbt or the
-# compiled classes are newer than it.
+# Run symdex. The first call (and any call after a source or build change)
+# stages it with sbt into target/symdex; every other call is plain java.
 #   bin/symdex serve --root /path/to/project      (an MCP server on stdio)
 #   bin/symdex references query=Bulk.joinSorted callers=true
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
-cp_file="$here/.symdex/classpath"
-mkdir -p "$here/.symdex"
-if [ ! -s "$cp_file" ] || [ "$here/build.sbt" -nt "$cp_file" ]; then
-  (cd "$here" && sbt -batch --error "compile" "export Runtime/fullClasspath" | tail -1 > "$cp_file")
+staged="$here/target/symdex/bin/symdex"
+if [ ! -x "$staged" ] || [ -n "$(find "$here/build.sbt" "$here/src/main" "$here/okay/okay-mcp/src/main" \
+      -newer "$staged" -type f 2>/dev/null | head -1)" ]; then
+  (cd "$here" && sbt -batch --error stage >&2)
 fi
-exec java -Xss8m -cp "$(cat "$cp_file")" symdex.Symdex "$@"
+exec "$staged" "$@"
