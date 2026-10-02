@@ -5,13 +5,13 @@ import java.nio.file.attribute.BasicFileAttributes
 
 /** One `.semanticdb` file on disk, and which module and configuration wrote it. */
 final case class DbFile(path: Path, root: Path, module: String, test: Boolean,
-                        mtime: Long, size: Long)
+                        mtime: Long, size: Long, scip: Boolean = false)
 
 /**
  * Where a build left its SemanticDB. sbt 1.13 writes it under
  * `target/scala-<version>/meta` (`test-meta` for tests); older setups and
  * other tools put it beside the classes, in `classes/META-INF/semanticdb`.
- * Both are found. A class directory is never walked — only its
+ * Both are found, and so is any SCIP index (`*.scip`). A class directory is never walked — only its
  * `META-INF/semanticdb` — so a large build's class files cost nothing.
  */
 object Scan:
@@ -37,6 +37,14 @@ object Scan:
           if Files.isDirectory(db) then collect(base, db, out)
           FileVisitResult.SKIP_SUBTREE
         else FileVisitResult.CONTINUE
+      // a SCIP index (`index.scip`, any `*.scip`): the module is the directory it sits in
+      override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
+        if file.getFileName.toString.endsWith(".scip") then
+          val dir = file.getParent
+          val rel = base.relativize(dir).toString.replace('\\', '/')
+          val module = if rel.isEmpty then Option(base.getFileName).map(_.toString).getOrElse(".") else rel
+          out += DbFile(file, dir, module, test = false, attrs.lastModifiedTime.toMillis, attrs.size, scip = true)
+        FileVisitResult.CONTINUE
       override def visitFileFailed(file: Path, e: java.io.IOException): FileVisitResult =
         FileVisitResult.CONTINUE
     ): Unit

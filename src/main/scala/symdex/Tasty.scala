@@ -95,12 +95,13 @@ final class TastyDir(val dir: Path, val stamp: Long):
  * when two builds disagree on the root (okay compiled from symdex's build),
  * the longer path ends with the shorter.
  */
-final class Spans(dirs: Map[Path, TastyDir]):
+final class Spans(dirs: Map[Path, TastyDir],
+                  fixed: Map[Path, Map[String, Map[(Int, Int), Span]]] = Map.empty):
   private val byRoot = collection.concurrent.TrieMap.empty[Path, Map[String, Map[(Int, Int), Span]]]
 
   private def table(root: Path): Map[String, Map[(Int, Int), Span]] =
     byRoot.getOrElseUpdate(root, dirs.get(root) match
-      case None => Map.empty
+      case None => fixed.getOrElse(root, Map.empty)
       case Some(d) =>
         d.force().spans.toVector.groupMap(_._1._1)((k, v) => (k._2, k._3) -> v).view.mapValues(_.toMap).toMap)
 
@@ -120,7 +121,7 @@ final class Spans(dirs: Map[Path, TastyDir]):
   def loaded: Int = done.size
   def classes: Int = done.iterator.map(_.read.classes).sum
   def skipped: Int = done.iterator.map(_.read.skipped).sum
-  def size: Int = done.iterator.map(_.read.spans.size).sum
+  def size: Int = done.iterator.map(_.read.spans.size).sum + fixed.valuesIterator.map(_.valuesIterator.map(_.size).sum).sum
   def failures: Vector[String] = dirs.values.flatMap(d => d.failed.map(m => s"tasty ${d.dir}: $m")).toVector
 
 object Spans:

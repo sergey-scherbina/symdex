@@ -22,6 +22,8 @@ final class Workspace(val root: Path, recheckMillis: Long = 2000,
   private val current = AtomicReference[Generation | Null](null)
   private var checkedAt = 0L
   private var parsed = Map.empty[Path, (Long, Long, Vector[Document])]
+  /** a SCIP index's own spans (its enclosing ranges), by index file */
+  private var scipSpans = Map.empty[Path, Map[String, Map[(Int, Int), Span]]]
   private var sourceRoots = Map.empty[(Path, String), Option[Path]]
   /** TASTy read per class directory, kept while that module's SemanticDB is unchanged */
   private var tasty = Map.empty[Path, TastyDir]
@@ -50,7 +52,14 @@ final class Workspace(val root: Path, recheckMillis: Long = 2000,
         case Some((m, s, d)) if m == f.mtime && s == f.size => Some(d)
         case _ =>
           try
-            val d = Semanticdb.read(Files.readAllBytes(f.path))
+            val bytes = Files.readAllBytes(f.path)
+            val d =
+              if f.scip then
+                val r = Scip.read(bytes)
+                scipSpans = scipSpans.updated(f.path,
+                  r.spans.toVector.groupMap(_._1._1)((k, v) => (k._2, k._3) -> v).view.mapValues(_.toMap).toMap)
+                r.documents
+              else Semanticdb.read(bytes)
             parsed = parsed.updated(f.path, (f.mtime, f.size, d))
             Some(d)
           catch case e: Exception =>
@@ -67,13 +76,14 @@ final class Workspace(val root: Path, recheckMillis: Long = 2000,
       .distinctBy(_.source)
     // TASTy per class directory: kept while that module's SemanticDB is
     // unchanged, read lazily (on first use, or by `warm` in a server)
-    val roots = files.groupBy(_.root).view.mapValues(_.map(_.mtime).max).toMap
+    val roots = files.filterNot(_.scip).groupBy(_.root).view.mapValues(_.map(_.mtime).max).toMap
     tasty = roots.map { (root, stamp) =>
       root -> (tasty.get(root) match
         case Some(d) if d.stamp == stamp => d
         case _ => TastyDir(Tasty.classDirOf(root), stamp))
     }
-    val spans = Spans(tasty)
+    scipSpans = scipSpans.filter((p, _) => live(p))
+    val spans = Spans(tasty, files.filter(_.scip).map(f => f.root -> scipSpans.getOrElse(f.path, Map.empty)).toMap)
     val index = Index(base, entries, spans)
     Generation(number, index, files, System.currentTimeMillis(), System.currentTimeMillis() - start,
       unreadable.result())
