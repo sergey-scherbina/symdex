@@ -98,7 +98,7 @@ final class Index(val root: Path, val entries: Vector[Entry]):
     anonymous._1.getOrElse(s, Vector.empty) ++ anonymous._2.getOrElse(s, Vector.empty)
 
   /** per source file: the non-local definitions in order, for "which definition encloses this line" */
-  private val outline: Map[String, Vector[(Range, String)]] =
+  private val outlines: Map[String, Vector[(Range, String)]] =
     val enclosing = Set(Info.Method, Info.Field, Info.Object, Info.Class, Info.Trait,
       Info.Interface, Info.Constructor, Info.Macro, Info.PackageObject)
     entries.map { e =>
@@ -116,10 +116,14 @@ final class Index(val root: Path, val entries: Vector[Entry]):
    * TASTy carries the spans that would make it exact (specs/symdex.md).
    */
   def enclosing(l: Loc): Option[String] =
-    outline.getOrElse(l.file, Vector.empty)
+    outlines.getOrElse(l.file, Vector.empty)
       .takeWhile((r, _) => r.startLine < l.range.startLine ||
         (r.startLine == l.range.startLine && r.startChar < l.range.startChar))
       .lastOption.map(_._2)
+
+  /** a file's non-local definitions in source order (constructors left out) */
+  def outlineOf(file: String): Vector[(Range, String)] =
+    outlines.getOrElse(file, Vector.empty).filterNot((_, s) => Symbols.name(s) == "<init>")
 
   /** module → module → how many references the first makes into the second */
   val uses: Map[String, Map[String, Int]] =

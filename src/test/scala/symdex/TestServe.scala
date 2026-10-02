@@ -18,10 +18,10 @@ class TestServe extends munit.FunSuite:
 
   private val hello = Rpc.Request(Json.JNum(1), Mcp.Initialize, Mcp.initializeParams(Mcp.Info("client", "1")))
 
-  test("tools/list names the seven tools"):
+  test("tools/list names the ten tools"):
     val Rpc.Answer(_, result) = talk(hello, Rpc.Request(Json.JNum(2), Mcp.ToolsList, Json.JObj(Vector.empty)))(1): @unchecked
     assertEquals(Mcp.toolsOf(result)._1.map(_.name).toSet,
-      Set("definition", "references", "implementations", "givens", "members", "modules", "status"))
+      Set("definition", "references", "implementations", "givens", "members", "modules", "status", "source", "outline", "more"))
 
   test("tools/call answers; a missing argument is an isError answer"):
     val ok = Rpc.Request(Json.JNum(3), Mcp.ToolsCall, Mcp.callParams(

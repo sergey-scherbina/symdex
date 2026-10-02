@@ -12,6 +12,20 @@ import okay.codec.Json.*
  */
 final class Tools(ws: Workspace):
 
+  /** answers too long to return whole, by content hash; bounded, oldest dropped first */
+  private object archive:
+    private val MaxEntries = 64
+    private val entries = collection.mutable.LinkedHashMap.empty[String, String]
+    def put(text: String): String = synchronized {
+      val md = java.security.MessageDigest.getInstance("SHA-256")
+      val id = md.digest(text.getBytes("UTF-8")).take(6).map(b => f"${b & 0xff}%02x").mkString
+      entries.remove(id)
+      entries(id) = text
+      while entries.size > MaxEntries do entries.remove(entries.head._1)
+      id
+    }
+    def get(id: String): Option[String] = synchronized(entries.get(id))
+
   private val MaxCandidates = 20
 
   // ---- arguments -------------------------------------------------------
@@ -129,7 +143,9 @@ final class Tools(ws: Workspace):
       case Right(ss) if ss.size > 1 && !oneName(ss) && !bool(a, "all") =>
         s"${header(g)}\n${candidates(ix, ss)}\n(or `all: true` for every one of them)"
       case Right(ss) =>
+        val within = str(a, "in")
         val refs = ss.flatMap(s => ix.references.getOrElse(s, Vector.empty)).distinct
+          .filter(l => within.forall(w => l.file.contains(w) || l.module.contains(w)))
           .sortBy(l => (l.file, l.range.startLine, l.range.startChar))
         val files = refs.map(_.file).distinct.size
         val title = s"${ss.mkString(", ")}: ${refs.size} references in $files files"
@@ -289,6 +305,76 @@ final class Tools(ws: Workspace):
           }
           (Vector(header(g), "(a dependency here is a USE: a reference from one module's code to a symbol defined in another)") ++ body).mkString("\n")
 
+  /**
+   * The text of one definition and nothing else: from its first line to
+   * the end of its body, read by indentation (a line indented deeper
+   * than the definition, a blank, or the closing brace at its own
+   * indentation). SemanticDB has no body spans; for Scala written in
+   * either indentation or brace style this is the body, and `maxLines`
+   * bounds it either way.
+   */
+  def body(l: Loc, maxLines: Int): (Vector[String], Int) =
+    val lines = ws.sources.lines(l.source)
+    val at = l.range.startLine
+    if at >= lines.size then (Vector.empty, 0)
+    else
+      def indent(t: String): Int = t.takeWhile(_ == ' ').length
+      val base = indent(lines(at))
+      var end = at + 1
+      var go = true
+      while go && end < lines.size do
+        val t = lines(end)
+        if t.trim.isEmpty || indent(t) > base then end += 1
+        else
+          if t.trim.headOption.exists(c => c == '}' || c == ')') then end += 1
+          go = false
+      while end > at + 1 && lines(end - 1).trim.isEmpty do end -= 1
+      val all = lines.slice(at, end)
+      (all.take(maxLines), all.size)
+
+  def source(a: Json): String =
+    val g = ws.generation
+    val ix = g.index
+    val maxLines = int(a, "maxLines", 80)
+    symbolsOf(ix, need(a, "query")) match
+      case Left(why) => s"${header(g)}\n$why"
+      case Right(ss) if ss.size > 1 && !oneName(ss) => s"${header(g)}\n${candidates(ix, ss)}"
+      case Right(ss) =>
+        val out = ss.flatMap { s =>
+          ix.definitions.getOrElse(s, Vector.empty).flatMap { l =>
+            val (text, total) = body(l, maxLines)
+            val cut = if total > text.size then Vector(s"  … ${total - text.size} more lines (raise `maxLines`)") else Vector.empty
+            (s"$s  ${l.show}  (${total} lines)" +: text.zipWithIndex.map((t, i) => f"${l.line + i}%5d  $t")) ++ cut
+          }
+        }
+        if out.isEmpty then s"${header(g)}\n${ss.mkString(", ")}: defined outside the index"
+        else (header(g) +: out).mkString("\n")
+
+  /** a file's definitions, nested, one line each: what a file IS, without reading it */
+  def outline(a: Json): String =
+    val g = ws.generation
+    val ix = g.index
+    val path = need(a, "file")
+    ix.fileFor(path) match
+      case es if es.isEmpty => s"${header(g)}\nno indexed file matches '$path'"
+      case es if es.size > 1 => s"${header(g)}\n'$path' matches ${es.size} files:\n" + es.map("  " + _.file).mkString("\n")
+      case es =>
+        val e = es.head
+        val defs = ix.outlineOf(e.file)
+        val depth0 = defs.map((_, s) => Symbols.names(s).size).minOption.getOrElse(0)
+        val total = ws.sources.lines(e.source).size
+        val rows = defs.map { (r, s) =>
+          val i = ix.infos.get(s)
+          val kind = i.map(_.kind) match
+            case Some(Info.Method) => if i.exists(_.isGiven) then "given" else "def"
+            case Some(Info.Field) => "val"
+            case Some(Info.Macro) => "inline def"
+            case Some(k) => Info.kindNames.getOrElse(k, "")
+            case None => ""
+          f"${r.startLine + 1}%5d  ${"  " * (Symbols.names(s).size - depth0)}$kind ${Symbols.name(s)}"
+        }
+        (Vector(header(g), s"${e.file}  ($total lines, ${defs.size} definitions; `source` for one body)") ++ rows).mkString("\n")
+
   def status(@annotation.unused a: Json): String =
     val g = ws.generation
     val ix = g.index
@@ -319,11 +405,81 @@ final class Tools(ws: Workspace):
   private val query = ("query", "string",
     "a name (`joinSorted`, `Bulk.joinSorted`), a SemanticDB symbol (`okay/stream/Bulk#joinSorted().`) or a position `path:line[:col]`")
 
+  /**
+   * Every answer has a size limit, because an answer is context the
+   * agent pays for on every later turn (the "context diet" PostToolUse
+   * hook, specs/symdex.md: 89.9% of a week's large outputs were never
+   * needed whole). Past `budget` characters (default 8 000, about 2 000
+   * tokens) an answer is COMPRESSED, not cut: its header, the files it
+   * names with how many lines each, and as many first lines as fit — all
+   * exact, taken from the answer itself, so nothing can be invented —
+   * and the whole answer is archived for `more` to page through.
+   * Exact reads (`source`, `definition`) are never summarized, only
+   * paged, the hook's own rule for `cat`.
+   */
+  private val DefaultBudget = 8000
+
+  private val PathLine = """([\w./-]+\.(?:scala|java|sc)):(\d+)""".r
+
+  private def compressed(run: Json => String): Json => String = a =>
+    val out = run(a)
+    val budget = int(a, "budget", DefaultBudget)
+    if out.length <= budget then out
+    else
+      val id = archive.put(out)
+      val lines = out.linesIterator.toVector
+      val files = lines.flatMap(l => PathLine.findFirstMatchIn(l).map(_.group(1)))
+        .groupMapReduce(identity)(_ => 1)(_ + _).toVector.sortBy((f, n) => (-n, f))
+      val head = lines.take(2)
+      val fileRows = files.take(15).map((f, n) => s"  $f  ($n)") ++
+        (if files.size > 15 then Vector(s"  … ${files.size - 15} more files") else Vector.empty)
+      val room = budget / 2
+      val first = lines.drop(2).foldLeft(Vector.empty[String]) { (acc, l) =>
+        if acc.map(_.length + 1).sum + l.length < room then acc :+ l else acc
+      }
+      (head ++
+        Vector(s"[compressed: ${lines.size} lines, ${out.length} chars over a budget of $budget; " +
+          s"the whole answer is archived as `$id` — `more id=$id from=${2 + first.size + 1}` pages it, " +
+          "or narrow the query (`in`, `limit`, a qualified name)]") ++
+        (if files.nonEmpty then s"files named (${files.size}):" +: fileRows else Vector.empty) ++
+        ("first lines:" +: first)).mkString("\n")
+
+  /** exact reads: paged at a line, never summarized */
+  private def paged(run: Json => String): Json => String = a =>
+    val out = run(a)
+    val budget = int(a, "budget", DefaultBudget)
+    if out.length <= budget then out
+    else
+      val id = archive.put(out)
+      val at = out.lastIndexOf('\n', budget) match
+        case -1 => budget
+        case i => i
+      val shown = out.substring(0, at)
+      val next = shown.count(_ == '\n') + 2
+      shown + s"\n[paged: ${out.length} chars over a budget of $budget; `more id=$id from=$next` continues]"
+
+  /** a page of an archived answer: lines [from, from + lines) */
+  def more(a: Json): String =
+    val id = need(a, "id")
+    val from = int(a, "from", 1) max 1
+    val count = int(a, "lines", 150) max 1
+    archive.get(id) match
+      case None => s"no archived answer `$id` (archives live for this server's lifetime)"
+      case Some(text) =>
+        val lines = text.linesIterator.toVector
+        val page = lines.slice(from - 1, from - 1 + count)
+        val rest = lines.size - (from - 1 + page.size)
+        (s"[`$id` lines $from-${from + page.size - 1} of ${lines.size}]" +: page :++
+          (if rest > 0 then Vector(s"[`more id=$id from=${from + page.size}` for the next $rest lines]") else Vector.empty))
+          .mkString("\n")
+
+  private val budget = ("budget", "integer", "the answer's size limit in characters (default 8000)")
+
   val box: Toolbox = Toolbox.empty
     .raw("definition",
       "Where a symbol is defined: its file:line, kind, doc comment and signature lines. " +
         "Use instead of grepping for `def name`/`class Name`.",
-      schema(query)("query"))(definition)
+      schema(query, budget)("query"))(paged(definition))
     .raw("references",
       "Every use of a symbol, exact (resolved by the compiler, not by text): renamed imports, " +
         "extension calls and overloads included, comments and strings excluded. " +
@@ -332,25 +488,39 @@ final class Tools(ws: Workspace):
         ("callers", "boolean", "group by the enclosing definition"),
         ("context", "boolean", "show each reference's source line"),
         ("all", "boolean", "when the name matches several different symbols, answer for all of them"),
-        ("limit", "integer", "at most this many references (default 300)"))("query"))(references)
+        ("in", "string", "only references in files or modules whose name contains this"),
+        ("limit", "integer", "at most this many references (default 300)"), budget)("query"))(compressed(references))
     .raw("implementations",
       "Everything that implements a type or overrides a member, transitively: subclasses, " +
         "objects, overriding methods, and the given instances of a type class.",
-      schema(query)("query"))(implementations)
+      schema(query, budget)("query"))(compressed(implementations))
     .raw("givens",
       "What the compiler inserted at a line: which given/implicit each call there resolved to, " +
         "implicit conversions, inferred applies. The one question grep cannot answer.",
-      schema(("at", "string", "path:line[:col]"))("at"))(givens)
+      schema(("at", "string", "path:line[:col]"), budget)("at"))(compressed(givens))
     .raw("members",
       "A type's members: declared, then inherited from parents in the index, each with where it is defined.",
-      schema(query, ("all", "boolean", "include compiler-generated members (case class copy, …)"))("query"))(members)
+      schema(query, ("all", "boolean", "include compiler-generated members (case class copy, …)"), budget)("query"))(compressed(members))
     .raw("modules",
       "Modules and which use which (from actual references, not build declarations). With `query` " +
         "(a module or a file path): what it uses, what uses it, and every module a change there can reach.",
-      schema(("query", "string", "a module name or a source path; omit to list all"))())(modules)
+      schema(("query", "string", "a module name or a source path; omit to list all"), budget)())(compressed(modules))
+    .raw("source",
+      "The source text of one definition — its body, not its file. Use instead of reading a " +
+        "whole file to see one method or class.",
+      schema(query, ("maxLines", "integer", "at most this many lines (default 80)"), budget)("query"))(paged(source))
+    .raw("outline",
+      "A file's definitions, nested, one line each with its line number. Use instead of reading " +
+        "a file to learn what is in it; then `source` the one you need.",
+      schema(("file", "string", "a path, or its tail (`Tables.scala`)"), budget)("file"))(compressed(outline))
+    .raw("more",
+      "A page of an answer that was too long and was archived: its id is in that answer.",
+      schema(("id", "string", "the archive id from a compressed or paged answer"),
+        ("from", "integer", "first line, 1-based (default 1)"),
+        ("lines", "integer", "how many lines (default 150)"), budget)("id"))(paged(more))
     .raw("status",
       "The index: its generation and age, what it covers, and which sources were edited since they were compiled.",
-      schema()())(status)
+      schema()())(compressed(status))
 
   def specs: Seq[ToolSpec] = box.specs
   def table: Map[String, ToolCall => String] = box.table

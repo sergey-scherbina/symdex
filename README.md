@@ -36,7 +36,17 @@ codecs and storage; what symdex needs that is general goes into okay.
 | `givens` | what the compiler inserted at a line: which given each call resolved |
 | `members` | declared and inherited members |
 | `modules` | which modules use which, and what a change reaches |
+| `outline` | a file's definitions, one line each: what is in it, without reading it |
+| `source` | one definition's text, not its file |
+| `more` | a page of an answer that was too long and was archived |
 | `status` | the index's generation, age, coverage, and sources edited since compiled |
+
+Every answer has a size budget (8 000 characters by default). Over it, an
+answer is compressed to its header, the files it names, and its first lines,
+all copied from the answer itself. The whole answer is archived, and `more`
+pages through it. Exact reads such as `source` are paged, never summarized.
+That is the "context diet" applied to a code index, without a model in the
+loop: specs/symdex.md, "Context diet".
 
 A query is a name (`joinSorted`, `Bulk.joinSorted`), a SemanticDB symbol
 (`okay/Bulk#joinSorted().`) or a position (`Tables.scala:188:60`). A name

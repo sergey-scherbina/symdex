@@ -86,6 +86,48 @@ class TestSymdex extends munit.FunSuite:
     assert(out.contains("label  (method)"), out)
     assert(!out.contains("copy"), out)
 
+  test("outline: what a file is, nested, without its text"):
+    val out = call(tools.outline, "file" -> Json.JStr("Shapes.scala"))
+    assert(out.contains("src/test/scala/fixture/Shapes.scala"), out)
+    assert(out.contains("trait Shape"), out)
+    assert(out.contains("  def total"), out)
+    assert(out.contains("given showShape"), out)
+    assert(!out.contains("shapes.map"), out)
+
+  test("source: one body, by indentation, not the file"):
+    val tri = call(tools.source, q("fixture.Triangle"))
+    assert(tri.contains("final class Triangle"), tri)
+    assert(tri.contains("def area: Double = b * h / 2"), tri)
+    assert(!tri.contains("trait Show"), tri)
+    assert(tri.contains("(3 lines)"), tri)
+    val one = call(tools.source, q("Use.total"))
+    assert(one.contains("(1 lines)"), one)
+    val capped = call(tools.source, q("fixture.Use"), "maxLines" -> Json.JNum(2))
+    assert(capped.contains("more lines (raise `maxLines`)"), capped)
+
+  private def wire(tool: String, kv: (String, Json)*): String =
+    tools.table(tool)(okay.agent.ToolCall("t", tool, Json.JObj(kv.toVector)))
+
+  test("over budget, an answer is compressed from itself and archived whole"):
+    val full = wire("outline", "file" -> Json.JStr("Shapes.scala"))
+    val out = wire("outline", "file" -> Json.JStr("Shapes.scala"), "budget" -> Json.JNum(300))
+    assert(out.contains("[compressed:"), out)
+    assert(out.contains("first lines:"), out)
+    val id = """archived as `([0-9a-f]+)`""".r.findFirstMatchIn(out).map(_.group(1)).getOrElse(fail(out))
+    // every line `more` gives back is a line of the full answer: nothing invented
+    val page = wire("more", "id" -> Json.JStr(id), "from" -> Json.JNum(1), "lines" -> Json.JNum(500))
+    val body = page.linesIterator.drop(1).toVector
+    assertEquals(body, full.linesIterator.toVector)
+
+  test("an exact read is paged, never summarized"):
+    val out = wire("source", q("fixture.Use"), "budget" -> Json.JNum(150))
+    assert(out.contains("[paged:"), out)
+    assert(!out.contains("[compressed:"), out)
+
+  test("references `in` narrows to a path or module"):
+    val out = call(tools.references, q("Use.total"), "in" -> Json.JStr("Other.scala"))
+    assert(out.contains("1 references in 1 files"), out)
+
   test("modules and status"):
     val m = call(tools.modules)
     assert(m.contains("symdex:test"), m)

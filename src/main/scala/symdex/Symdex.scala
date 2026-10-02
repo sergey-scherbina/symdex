@@ -7,7 +7,7 @@ import okay.mcp.{Mcp, Server, Stdio}
 import java.nio.file.Path
 
 object Symdex:
-  val version = "0.1.0"
+  val version = "0.2.0"
 
   private val usage =
     """symdex — structural code intelligence over SemanticDB

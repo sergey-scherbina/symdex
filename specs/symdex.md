@@ -61,6 +61,50 @@ its age.
 Symbol names are SemanticDB's (`okay/Free#flatMap().`), with a fuzzy
 lookup from a plain name that returns candidates rather than guessing.
 
+## Context diet (v0.2)
+
+Every answer is context the agent pays for on every later turn. The
+"Claude Context Diet" note (a PostToolUse hook: tool outputs of 3 500+
+tokens replaced by a model-written fact list plus an archive path; a
+week's 1.85M tokens became 186K; exact reads and diffs never
+compressed; Haiku 4.5 rejected for inventing file paths) is the source
+of this section. symdex takes its shape and drops the model: its
+answers are already structured, so the summary can be EXACT.
+
+- [x] `outline file` — a file's definitions, nested, one line each with
+      its line number: what a file is, without reading it.
+- [x] `source query` — one definition's text, read by indentation from
+      its first line to the end of its body (SemanticDB has no spans;
+      TASTy would make it exact), capped by `maxLines`.
+- [x] Every answer has a `budget` (default 8 000 chars, about 2 000
+      tokens). Over it, a structural answer is COMPRESSED: its header,
+      the files it names with a count each, and the first lines that
+      fit — every one copied from the answer, so nothing is invented —
+      and the whole answer is archived.
+- [x] Exact reads (`source`, `definition`) are PAGED, never summarized:
+      the hook's own rule for `cat`.
+- [x] `more id from lines` pages any archived answer; a test pins that
+      the pages put back together are the full answer, byte for byte.
+- [x] `references in` narrows to a path or module before anything is
+      cut.
+
+Measured on okay: the same 200-line task, reading the file against
+`outline` + `source`, and the widest answers, full against compressed.
+
+| ask | before | after |
+|---|---|---|
+| FlowBulk.scala: what is in it, then `joinSorted` | Read: 6 862 chars | outline 266 + source 343 |
+| Tables.scala: then `Plan.orderedBy` | Read: 18 565 | outline 2 842 + source 373 |
+| Chunks.scala: what is in it | Read: 24 618 | outline 1 037 |
+| references to `Source`, each line shown | 37 664 | 5 302 (86% less) |
+| references to `Tables.of`, each line shown | 9 775 | 4 977 (50% less) |
+
+Most answers never reach the budget: references grouped by file are
+already small (`Chunks.fromIterator`, 46 references, 1 407 chars).
+Compression is for the wide ones. Not adopted: a model in the loop. A
+summary computed from a structured answer costs nothing, cannot invent
+a path, and is the same every time.
+
 ## Freshness
 
 - [x] An index is a GENERATION: built whole, immutable, swapped in
