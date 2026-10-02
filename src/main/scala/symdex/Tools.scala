@@ -213,7 +213,7 @@ final class Tools(ws: Workspace):
           val hits = es.flatMap(e => e.doc.synthetics.map(e -> _)).filter((_, s) =>
             s.symbols.nonEmpty && (col match
               case null => s.range.startLine == l
-              case c => s.range.covers(l, c.toInt - 1)))
+              case c => s.range.startLine == l && s.range.covers(l, c.toInt - 1)))
             .groupBy((e, s) => (e.file, s.range)).toVector
             .sortBy { case ((_, r), _) => (r.startLine, r.startChar, -r.endChar) }
           if hits.isEmpty then s"${header(g)}\nthe compiler inserted nothing at ${path}:$line"

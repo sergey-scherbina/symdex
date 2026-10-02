@@ -10,7 +10,7 @@ object Symdex:
   val version = "0.5.0"
 
   private val usage =
-    """symdex — structural code intelligence over SemanticDB
+    """symdex — structural code intelligence over SemanticDB, TASTy and SCIP
       |
       |  symdex serve [--root DIR] [--tools a,b] [--lean]
       |                                          an MCP server on stdin/stdout; --tools serves only
@@ -19,7 +19,8 @@ object Symdex:
       |  symdex files [--root DIR]               the source files indexed
       |  symdex hook                             a Claude Code PostToolUse hook (bin/symdex-hook)
       |
-      |tools: definition, references, implementations, givens, members, modules, status
+      |tools: definition, references, implementations, givens, members, modules,
+      |       outline, source, more, status            (docs: GUIDE.md)
       |e.g.   symdex references query=Bulk.joinSorted callers=true""".stripMargin
 
   def main(args: Array[String]): Unit =

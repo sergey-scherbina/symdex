@@ -14,8 +14,11 @@ indexes their own indexers write (scip-typescript, scip-python,
 rust-analyzer, scip-clang): drop an `index.scip` under the root. symdex
 writes no per-language analyzer.
 
-Built on [okay](https://github.com/sergey-scherbina/okay): its MCP server,
-codecs and storage; what symdex needs that is general goes into okay.
+Built on [okay](https://github.com/sergey-scherbina/okay): its MCP server
+and JSON codec; what symdex needs that is general goes into okay.
+
+**[GUIDE.md](GUIDE.md)** is the user guide: every tool with a real example,
+settings, the hook, Java and SCIP, troubleshooting, and the literature.
 
 ## How it relates to
 
@@ -103,7 +106,7 @@ are never touched. In `.claude/settings.json`:
 
 ```json
 {"hooks": {"PostToolUse": [{"matcher": "Bash|Grep",
-  "hooks": [{"type": "command", "command": "~/.symdex/0.5.0/symdex/bin/symdex-hook"}]}]}}
+  "hooks": [{"type": "command", "command": "/Users/you/.symdex/0.5.0/symdex/bin/symdex-hook"}]}]}}
 ```
 
 `rg -n answered` over okay: 167 409 characters in, 4 745 out.

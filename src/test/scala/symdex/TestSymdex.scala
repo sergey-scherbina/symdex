@@ -74,6 +74,12 @@ class TestSymdex extends munit.FunSuite:
     assert(show.contains("fixture/Show.given_Show_Int."), show)
     assert(show.contains("fixture/Show.showShape."), show)
 
+  test("givens at a column: only what starts on that line"):
+    // `render(shapes.head)` at line 40 col 17: its given, not the whole line's enclosing calls
+    val out = call(tools.givens, "at" -> Json.JStr("fixture/Shapes.scala:40:17"))
+    assert(out.contains("given fixture/Show.showShape."), out)
+    assert(!out.contains("given_Show_Int"), out)
+
   test("givens: which instance a call site resolved"):
     val out = call(tools.givens, "at" -> Json.JStr("fixture/Shapes.scala:40"))
     assert(out.contains("given fixture/Show.given_Show_Int."), out)
