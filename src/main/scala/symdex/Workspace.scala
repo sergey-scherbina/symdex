@@ -23,6 +23,8 @@ final class Workspace(val root: Path, recheckMillis: Long = 2000,
   private var checkedAt = 0L
   private var parsed = Map.empty[Path, (Long, Long, Vector[Document])]
   private var sourceRoots = Map.empty[(Path, String), Option[Path]]
+  /** TASTy read per class directory, kept while that module's SemanticDB is unchanged */
+  private var tasty = Map.empty[Path, TastyDir]
   val sources: Sources = Sources()
 
   def generation: Generation = synchronized {
@@ -63,7 +65,16 @@ final class Workspace(val root: Path, recheckMillis: Long = 2000,
     val entries = docs.sortBy((f, d) => (f.module.contains(" ("), f.module, d.uri))
       .flatMap((f, d) => sourceOf(f, d.uri).map(src => Entry(f, src, display(src), d)))
       .distinctBy(_.source)
-    val index = Index(base, entries)
+    // TASTy per class directory: kept while that module's SemanticDB is
+    // unchanged, read lazily (on first use, or by `warm` in a server)
+    val roots = files.groupBy(_.root).view.mapValues(_.map(_.mtime).max).toMap
+    tasty = roots.map { (root, stamp) =>
+      root -> (tasty.get(root) match
+        case Some(d) if d.stamp == stamp => d
+        case _ => TastyDir(Tasty.classDirOf(root), stamp))
+    }
+    val spans = Spans(tasty)
+    val index = Index(base, entries, spans)
     Generation(number, index, files, System.currentTimeMillis(), System.currentTimeMillis() - start,
       unreadable.result())
 

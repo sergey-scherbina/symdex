@@ -16,7 +16,12 @@ final case class Entry(db: DbFile, source: Path, file: String, doc: Document)
  * Everything the tools ask, precomputed from one set of documents. An
  * Index is immutable: a new build is a new Index, swapped in whole.
  */
-final class Index(val root: Path, val entries: Vector[Entry]):
+final class Index(val root: Path, val entries: Vector[Entry], val spans: Spans = Spans.none):
+
+  private val entryOf: Map[String, Entry] = entries.map(e => e.file -> e).toMap
+
+  /** the full extent of the definition named at `l`, when TASTy has it */
+  def spanAt(l: Loc): Option[Span] = entryOf.get(l.file).flatMap(e => spans.of(e.db.root, e.doc.uri, l.range))
 
   /** what every symbol is, from the document that defines it */
   val infos: Map[String, Info] =
@@ -116,10 +121,33 @@ final class Index(val root: Path, val entries: Vector[Entry]):
    * TASTy carries the spans that would make it exact (specs/symdex.md).
    */
   def enclosing(l: Loc): Option[String] =
-    outlines.getOrElse(l.file, Vector.empty)
-      .takeWhile((r, _) => r.startLine < l.range.startLine ||
-        (r.startLine == l.range.startLine && r.startChar < l.range.startChar))
-      .lastOption.map(_._2)
+    val defs = outlines.getOrElse(l.file, Vector.empty)
+    val e = entryOf.get(l.file)
+    // exact, from TASTy: the innermost definition whose span holds the line
+    val exact = e.toVector.flatMap(en => defs.flatMap((r, s) => spans.of(en.db.root, en.doc.uri, r).map(sp => (r, s, sp))))
+      .filter((r, _, sp) => sp.startLine <= l.range.startLine && l.range.startLine <= sp.endLine &&
+        !(r.startLine == l.range.startLine && r.startChar == l.range.startChar))
+      .maxByOption((r, _, sp) => (sp.startLine, r.startChar))
+      .map(_._2)
+    exact.orElse(
+      defs.takeWhile((r, _) => r.startLine < l.range.startLine ||
+          (r.startLine == l.range.startLine && r.startChar < l.range.startChar))
+        .lastOption.map(_._2))
+
+  /**
+   * Extension methods by the type of their receiver (`extension (s: Shape)
+   * def doubled` under Shape): TASTy says which methods are extensions,
+   * SemanticDB's first parameter's type says on what.
+   */
+  lazy val extensionsOn: Map[String, Vector[String]] =
+    spans.warm() // every module's TASTy, read in parallel, before the scan asks one by one
+    infos.values.toVector.flatMap { i =>
+      if i.kind != Info.Method then None
+      else
+        val isExt = definitions.get(i.symbol).flatMap(_.headOption).flatMap(spanAt).exists(_.extension)
+        if !isExt then None
+        else i.params.headOption.flatMap(infos.get).map(_.result).filter(_.nonEmpty).map(_ -> i.symbol)
+    }.groupMap(_._1)(_._2).view.mapValues(_.distinct.sorted).toMap
 
   /** a file's non-local definitions in source order (constructors left out) */
   def outlineOf(file: String): Vector[(Range, String)] =

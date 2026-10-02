@@ -24,6 +24,8 @@ lazy val symdex = (project in file("."))
     // compiler writes beside the classes
     semanticdbEnabled := true,
     libraryDependencies ++= Seq(
+      // TASTy, for what SemanticDB lacks: definition spans, extension flags
+      "ch.epfl.scala" %% "tasty-query" % "1.9.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )

@@ -266,6 +266,11 @@ final class Tools(ws: Workspace):
               if decls.nonEmpty then
                 out += (if owner == s then s"$s  (${describe(ix, s)})" else s"  inherited from $owner")
                 decls.foreach(d => out += s"    ${Symbols.name(d)}  (${describe(ix, d)})  ${where(ix, d)}")
+            // extension methods on the type or on any of its parents in the index
+            val exts = order.toVector.flatMap(t => ix.extensionsOn.getOrElse(t, Vector.empty).map(t -> _))
+            if exts.nonEmpty then
+              out += "  extension methods:"
+              exts.foreach((on, e) => out += s"    ${Symbols.name(e)}  (on ${Symbols.show(on)})  ${where(ix, e)}")
           (header(g) +: out.result()).mkString("\n")
 
   def modules(a: Json): String =
@@ -310,28 +315,33 @@ final class Tools(ws: Workspace):
    * The text of one definition and nothing else: from its first line to
    * the end of its body, read by indentation (a line indented deeper
    * than the definition, a blank, or the closing brace at its own
-   * indentation). SemanticDB has no body spans; for Scala written in
-   * either indentation or brace style this is the body, and `maxLines`
-   * bounds it either way.
+   * indentation). TASTy gives the exact span; without it (a class TASTy could not
+   * read) the body is read by indentation, and `maxLines` bounds it either way.
    */
-  def body(l: Loc, maxLines: Int): (Vector[String], Int) =
+  def body(ix: Index, l: Loc, maxLines: Int): (Vector[String], Int) =
     val lines = ws.sources.lines(l.source)
     val at = l.range.startLine
     if at >= lines.size then (Vector.empty, 0)
     else
-      def indent(t: String): Int = t.takeWhile(_ == ' ').length
-      val base = indent(lines(at))
-      var end = at + 1
-      var go = true
-      while go && end < lines.size do
-        val t = lines(end)
-        if t.trim.isEmpty || indent(t) > base then end += 1
-        else
-          if t.trim.headOption.exists(c => c == '}' || c == ')') then end += 1
-          go = false
-      while end > at + 1 && lines(end - 1).trim.isEmpty do end -= 1
-      val all = lines.slice(at, end)
+      val all = ix.spanAt(l) match
+        case Some(sp) => lines.slice(at min sp.startLine, (sp.endLine + 1) min lines.size) // exact, from TASTy
+        case None => lines.slice(at, byIndentation(lines, at))
       (all.take(maxLines), all.size)
+
+  /** where a body ends when TASTy has no span: the first line back at the definition's indentation */
+  private def byIndentation(lines: Vector[String], at: Int): Int =
+    def indent(t: String): Int = t.takeWhile(_ == ' ').length
+    val base = indent(lines(at))
+    var end = at + 1
+    var go = true
+    while go && end < lines.size do
+      val t = lines(end)
+      if t.trim.isEmpty || indent(t) > base then end += 1
+      else
+        if t.trim.headOption.exists(c => c == '}' || c == ')') then end += 1
+        go = false
+    while end > at + 1 && lines(end - 1).trim.isEmpty do end -= 1
+    end
 
   def source(a: Json): String =
     val g = ws.generation
@@ -343,7 +353,7 @@ final class Tools(ws: Workspace):
       case Right(ss) =>
         val out = ss.flatMap { s =>
           ix.definitions.getOrElse(s, Vector.empty).flatMap { l =>
-            val (text, total) = body(l, maxLines)
+            val (text, total) = body(ix, l, maxLines)
             val cut = if total > text.size then Vector(s"  … ${total - text.size} more lines (raise `maxLines`)") else Vector.empty
             (s"$s  ${l.show}  (${total} lines)" +: text.zipWithIndex.map((t, i) => f"${l.line + i}%5d  $t")) ++ cut
           }
@@ -385,12 +395,16 @@ final class Tools(ws: Workspace):
       s"root: ${ws.root.toAbsolutePath.normalize}",
       s"semanticdb files: ${g.files.size}, documents indexed: ${ix.entries.size}, modules: ${ix.modules.size}",
       s"symbols: ${ix.infos.size}, occurrences: ${ix.occurrenceCount}, built in ${g.buildMillis} ms",
+      s"TASTy: ${ix.spans.loaded} of ${ix.spans.directories} class directories read so far " +
+        s"(${ix.spans.size} definition spans, ${ix.spans.classes} classes; the rest load on first use)" +
+        (if ix.spans.skipped > 0 then s"; ${ix.spans.skipped} classes unreadable without their dependencies (approximate spans there)" else ""),
       s"tool schemas: ${specs.size} tools, ~${Tools.schemaTokens(specs)} tokens per turn " +
         s"(lean: ~${Tools.schemaTokens(specs.map(Tools.lean))}; `serve --tools a,b --lean` to pay less)",
       if stale.isEmpty then "every indexed source is older than its SemanticDB"
       else s"${stale.size} sources edited since they were compiled (answers about them may be off until a compile):"
     ) ++ stale.take(10).map(e => s"  ${e.file}") ++
-      (if g.unreadable.isEmpty then Vector.empty else "unreadable:" +: g.unreadable.take(10).map("  " + _)) ++
+      (if g.unreadable.isEmpty && ix.spans.failures.isEmpty then Vector.empty
+       else "unreadable:" +: (g.unreadable ++ ix.spans.failures).take(10).map("  " + _)) ++
       (if g.files.isEmpty then Vector(
         "no SemanticDB found: compile with it on — in sbt, `set every semanticdbEnabled := true` then `Test/compile`")
        else Vector.empty)
@@ -536,6 +550,11 @@ final class Tools(ws: Workspace):
     .raw("status",
       "The index: its generation and age, what it covers, and which sources were edited since they were compiled.",
       schema()())(compressed(status))
+
+  /** read every module's TASTy now (a server calls this once, in the background) */
+  def warm(): Unit =
+    try ws.generation.index.spans.warm()
+    catch case e: Exception => System.err.println(s"symdex: TASTy warm-up: ${e.getMessage}")
 
   def specs: Seq[ToolSpec] = box.specs
   def table: Map[String, ToolCall => String] = box.table

@@ -30,6 +30,9 @@ object Symdex:
           .map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet)
         val lean = opts.contains("--lean") || sys.env.get("SYMDEX_LEAN").contains("1")
         val serving = tools.serving(only, lean)
+        // TASTy for every module, in the background: the first `callers`,
+        // `source` or `members` then finds it read
+        Thread.ofVirtual().start(() => tools.warm()): Unit
         System.err.println(s"symdex $version: serving ${root.toAbsolutePath.normalize}, " +
           s"${serving.tools.size} tools, ~${Tools.schemaTokens(serving.tools)} schema tokens")
         Server.run(Stdio.std, serving).runWith

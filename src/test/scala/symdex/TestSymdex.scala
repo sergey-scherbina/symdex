@@ -130,11 +130,30 @@ class TestSymdex extends munit.FunSuite:
     val out = call(tools.references, q("Use.total"), "in" -> Json.JStr("Other.scala"))
     assert(out.contains("1 references in 1 files"), out)
 
+  test("callers are exact where TASTy has spans: code after a method is not credited to it"):
+    // `shapes.head.doubled` (line 40) sits in `report`; `doubled`'s only use
+    val out = call(tools.references, q("fixture.doubled"), "callers" -> yes)
+    assert(out.contains("fixture.Use.report"), out)
+    // Polygon#label's `sides` reference is inside label, not after it
+    val sides = call(tools.references, q("Polygon.sides"), "callers" -> yes)
+    assert(sides.contains("fixture.Polygon#label"), sides)
+
+  test("members list extension methods on the type and its parents"):
+    val out = call(tools.members, q("fixture.Triangle"))
+    assert(out.contains("extension methods:"), out)
+    assert(out.contains("doubled  (on fixture.Shape#)"), out)
+
+  test("source of a multi-line body comes from TASTy's span"):
+    val out = call(tools.source, q("Use.report"))
+    assert(out.contains("(3 lines)"), out)
+    assert(out.contains("render(1)"), out)
+
   test("modules and status"):
     val m = call(tools.modules)
     assert(m.contains("symdex:test"), m)
     val s = call(tools.status)
     assert(s.contains("documents indexed"), s)
+    assert(s.contains("TASTy: "), s)
 
   test("an unchanged disk is the same generation"):
     val a = Workspace(Path.of("."), recheckMillis = 0, include = f => f.module == "symdex:test")

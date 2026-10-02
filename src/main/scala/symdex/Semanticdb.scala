@@ -17,7 +17,8 @@ final case class Occurrence(range: Range, symbol: String, definition: Boolean)
  */
 final case class Info(symbol: String, kind: Int, properties: Int, name: String,
                       parents: Vector[String], declarations: Vector[String],
-                      result: String, overridden: Vector[String]):
+                      result: String, overridden: Vector[String],
+                      params: Vector[String] = Vector.empty):
   def is(property: Int): Boolean = (properties & property) != 0
   def kindName: String = Info.kindNames.getOrElse(kind, "symbol")
   def isGiven: Boolean = is(Info.Given) || is(Info.Implicit)
@@ -146,9 +147,10 @@ object Semanticdb:
         case (17, 2) => sig = signature(p.message())
         case (19, 2) => overridden += p.string()
         case (_, w) => p.skip(w)
-    Info(sym, kind, props, name, sig.parents, sig.declarations, sig.result, overridden.result())
+    Info(sym, kind, props, name, sig.parents, sig.declarations, sig.result, overridden.result(), sig.params)
 
-  private final case class Sig(parents: Vector[String], declarations: Vector[String], result: String)
+  private final case class Sig(parents: Vector[String], declarations: Vector[String], result: String,
+                               params: Vector[String] = Vector.empty)
   private object Sig:
     val empty: Sig = Sig(Vector.empty, Vector.empty, "")
 
@@ -157,10 +159,24 @@ object Semanticdb:
     while p.hasMore do
       p.field() match
         case (1, 2) => sig = classSignature(p.message())
-        case (2, 2) => sig = Sig.empty.copy(result = typeAt(p.message(), 3))
+        case (2, 2) => sig = methodSignature(p.message())
         case (4, 2) => sig = Sig.empty.copy(result = typeAt(p.message(), 1))
         case (_, w) => p.skip(w)
     sig
+
+  /** a method's first parameter list (an extension's receiver is its first) and its result type */
+  private def methodSignature(p: Proto): Sig =
+    var params = Vector.empty[String]
+    var first = true
+    var result = ""
+    while p.hasMore do
+      p.field() match
+        case (2, 2) =>
+          val list = scope(p.message())
+          if first then { params = list; first = false }
+        case (3, 2) => result = headSymbol(p.message())
+        case (_, w) => p.skip(w)
+    Sig(Vector.empty, Vector.empty, result, params)
 
   private def classSignature(p: Proto): Sig =
     val parents = Vector.newBuilder[String]
