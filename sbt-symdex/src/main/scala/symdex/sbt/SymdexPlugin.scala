@@ -12,7 +12,7 @@ import sjsonnew.support.scalajson.unsafe.{Parser, PrettyPrinter}
  * Makes a build symdex-ready, end to end:
  *
  *   // project/plugins.sbt
- *   addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.0")
+ *   addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.1")
  *   // then, once:
  *   sbt symdexIndex symdexMcp symdexHook
  *   // and any time, from the sbt shell:
@@ -48,23 +48,33 @@ object SymdexPlugin extends AutoPlugin {
   }
   import autoImport._
 
-  val PluginVersion = "0.5.0"
+  /** the symdex release this plugin downloads (the plugin's own version may run ahead of it) */
+  val SymdexRelease = "0.5.0"
 
   override def globalSettings: Seq[Setting[_]] = Seq(commands += symdexCommand)
 
   override def buildSettings: Seq[Setting[_]] = Seq(
     semanticdbEnabled := true,
-    symdexVersion := PluginVersion,
+    symdexVersion := SymdexRelease,
     symdexHome := sys.env.get("SYMDEX_HOME").map(file),
     symdexTools := Nil,
     symdexLean := false,
     symdexHookFile := (ThisBuild / baseDirectory).value / ".claude" / "settings.local.json",
     symdexLauncher := launcher(symdexHome.value, symdexVersion.value, streams.value.log),
-    symdexIndex := {
-      val _ = compile.all(ScopeFilter(inAnyProject, inConfigurations(Compile, Test))).value
-      val out = run(symdexLauncher.value, Seq("status", "--root", (ThisBuild / baseDirectory).value.getAbsolutePath))
-      streams.value.log.info(out)
-    },
+    // only THIS build's projects: `inAnyProject` also takes every project
+    // of a build referenced by ProjectRef (symdex's own okay submodule:
+    // 730 compiles across JVM, JS and Native before the first of symdex's;
+    // found by running the plugin on symdex itself). What they depend on is
+    // compiled anyway, as a dependency.
+    symdexIndex := Def.taskDyn {
+      val root = loadedBuild.value.root
+      val mine = buildStructure.value.allProjectRefs.filter(_.build == root)
+      Def.task {
+        val _ = compile.all(ScopeFilter(inProjects(mine: _*), inConfigurations(Compile, Test))).value
+        val out = run(symdexLauncher.value, Seq("status", "--root", (ThisBuild / baseDirectory).value.getAbsolutePath))
+        streams.value.log.info(out)
+      }
+    }.value,
     symdexMcp := {
       val log = streams.value.log
       val args = Seq("serve", "--root", ".") ++

@@ -68,7 +68,7 @@ In the project, `project/plugins.sbt`:
 
 ```scala
 resolvers += Resolver.url("symdex", url("https://sergey-scherbina.github.io/symdex"))(Resolver.ivyStylePatterns)
-addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.0")
+addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.1")
 ```
 
 then, once:
