@@ -25,7 +25,7 @@ Every example below is real output, over the okay library.
 
 ```scala
 resolvers += Resolver.url("symdex", url("https://sergey-scherbina.github.io/symdex"))(Resolver.ivyStylePatterns)
-addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.1")
+addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.2")
 ```
 
 Then, once:

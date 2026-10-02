@@ -12,7 +12,7 @@ import sjsonnew.support.scalajson.unsafe.{Parser, PrettyPrinter}
  * Makes a build symdex-ready, end to end:
  *
  *   // project/plugins.sbt
- *   addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.1")
+ *   addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.2")
  *   // then, once:
  *   sbt symdexIndex symdexMcp symdexHook
  *   // and any time, from the sbt shell:
@@ -67,12 +67,16 @@ object SymdexPlugin extends AutoPlugin {
     // found by running the plugin on symdex itself). What they depend on is
     // compiled anyway, as a dependency.
     symdexIndex := Def.taskDyn {
+      // everything the inner task needs is read here: a dynamic task's inner
+      // task has no `streams` of its own in this scope (0.5.1 failed so)
+      val log = streams.value.log
+      val launcherFile = symdexLauncher.value
+      val base = (ThisBuild / baseDirectory).value
       val root = loadedBuild.value.root
       val mine = buildStructure.value.allProjectRefs.filter(_.build == root)
       Def.task {
         val _ = compile.all(ScopeFilter(inProjects(mine: _*), inConfigurations(Compile, Test))).value
-        val out = run(symdexLauncher.value, Seq("status", "--root", (ThisBuild / baseDirectory).value.getAbsolutePath))
-        streams.value.log.info(out)
+        log.info(run(launcherFile, Seq("status", "--root", base.getAbsolutePath)))
       }
     }.value,
     symdexMcp := {
