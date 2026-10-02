@@ -65,6 +65,10 @@ that means several symbols is answered with the candidates.
      "args": ["serve", "--root", "."]}}}
    ```
 
+Tool schemas cost context on every turn: `serve --tools definition,references,source,outline --lean`
+serves four terse tools for about 335 tokens instead of about 1 517 for all ten.
+`status` shows both numbers.
+
 The index rebuilds itself when a compile rewrites the SemanticDB; nothing
 else needs to run. Results on okay against grep: [specs/symdex.md](specs/symdex.md#results).
 

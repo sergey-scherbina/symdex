@@ -116,8 +116,10 @@ class TestSymdex extends munit.FunSuite:
     val id = """archived as `([0-9a-f]+)`""".r.findFirstMatchIn(out).map(_.group(1)).getOrElse(fail(out))
     // every line `more` gives back is a line of the full answer: nothing invented
     val page = wire("more", "id" -> Json.JStr(id), "from" -> Json.JNum(1), "lines" -> Json.JNum(500))
+    // (the first line differs only by the ~tokens the live answer adds to its header)
     val body = page.linesIterator.drop(1).toVector
-    assertEquals(body, full.linesIterator.toVector)
+    assertEquals(body.drop(1), full.linesIterator.toVector.drop(1))
+    assert(full.linesIterator.next().startsWith(body.head.stripSuffix("]")), (full, body.head))
 
   test("an exact read is paged, never summarized"):
     val out = wire("source", q("fixture.Use"), "budget" -> Json.JNum(150))

@@ -3,6 +3,7 @@ package symdex
 import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.Json
 import okay.codec.Json.*
+import okay.mcp.{Mcp, Server}
 
 /**
  * The tools, each an answer an agent would otherwise assemble from
@@ -384,6 +385,8 @@ final class Tools(ws: Workspace):
       s"root: ${ws.root.toAbsolutePath.normalize}",
       s"semanticdb files: ${g.files.size}, documents indexed: ${ix.entries.size}, modules: ${ix.modules.size}",
       s"symbols: ${ix.infos.size}, occurrences: ${ix.occurrenceCount}, built in ${g.buildMillis} ms",
+      s"tool schemas: ${specs.size} tools, ~${Tools.schemaTokens(specs)} tokens per turn " +
+        s"(lean: ~${Tools.schemaTokens(specs.map(Tools.lean))}; `serve --tools a,b --lean` to pay less)",
       if stale.isEmpty then "every indexed source is older than its SemanticDB"
       else s"${stale.size} sources edited since they were compiled (answers about them may be off until a compile):"
     ) ++ stale.take(10).map(e => s"  ${e.file}") ++
@@ -421,7 +424,17 @@ final class Tools(ws: Workspace):
 
   private val PathLine = """([\w./-]+\.(?:scala|java|sc)):(\d+)""".r
 
-  private def compressed(run: Json => String): Json => String = a =>
+  /** the answer's own size, on its first line: what the agent is about to pay */
+  private def sized(out: String): String =
+    val nl = out.indexOf('\n')
+    val (first, rest) = if nl < 0 then (out, "") else (out.substring(0, nl), out.substring(nl))
+    if first.startsWith("[generation ") && first.endsWith("]") then
+      first.dropRight(1) + s", ~${Tools.tokens(out)} tokens]" + rest
+    else out
+
+  private def compressed(run: Json => String): Json => String = a => sized(compressedRaw(run)(a))
+
+  private def compressedRaw(run: Json => String): Json => String = a =>
     val out = run(a)
     val budget = int(a, "budget", DefaultBudget)
     if out.length <= budget then out
@@ -445,7 +458,9 @@ final class Tools(ws: Workspace):
         ("first lines:" +: first)).mkString("\n")
 
   /** exact reads: paged at a line, never summarized */
-  private def paged(run: Json => String): Json => String = a =>
+  private def paged(run: Json => String): Json => String = a => sized(pagedRaw(run)(a))
+
+  private def pagedRaw(run: Json => String): Json => String = a =>
     val out = run(a)
     val budget = int(a, "budget", DefaultBudget)
     if out.length <= budget then out
@@ -524,3 +539,40 @@ final class Tools(ws: Workspace):
 
   def specs: Seq[ToolSpec] = box.specs
   def table: Map[String, ToolCall => String] = box.table
+
+  /**
+   * The server as one session wants it. A tool schema is context paid
+   * on EVERY turn whether the tool is called or not (rozum's gateway
+   * counts Claude Code's 33 at ~5K tokens), so a session can take only
+   * the tools it uses (`only`, okay-mcp's `Serving.only`: absent, not
+   * refused) and terse descriptions (`lean`: the first sentence, no
+   * per-argument prose; rozum's lazy-tools step, as a choice made up
+   * front instead of under overflow).
+   */
+  def serving(only: Option[Set[String]], lean: Boolean): Server.Serving =
+    val all = Server.Serving(Mcp.Info("symdex", Symdex.version), specs, table)
+    val narrowed = only.fold(all)(names => all.only(names))
+    if lean then narrowed.copy(tools = narrowed.tools.map(Tools.lean)) else narrowed
+
+object Tools:
+
+  /** tokens, roughly: rozum's gateway estimate (chars / 3.5), the same for answers and schemas */
+  def tokens(s: String): Int = (s.length / 3.5).toInt + 1
+
+  /** what the tool list costs in context: the `tools/list` result as the client receives it */
+  def schemaTokens(specs: Seq[ToolSpec]): Int = tokens(Json.print(Mcp.toolsResult(specs)))
+
+  /** the first sentence of the description, and the schema with no per-argument descriptions */
+  def lean(t: ToolSpec): ToolSpec =
+    val first = t.description.indexOf(". ") match
+      case -1 => t.description
+      case i => t.description.substring(0, i + 1)
+    def strip(j: Json): Json = j match
+      case JObj(fs) => JObj(fs.collect {
+        case ("properties", JObj(ps)) => "properties" -> JObj(ps.map((n, p) => n -> (p match
+          case JObj(pf) => JObj(pf.filterNot(_._1 == "description"))
+          case other => other)))
+        case kv => kv
+      })
+      case other => other
+    t.copy(description = first, schema = strip(t.schema))

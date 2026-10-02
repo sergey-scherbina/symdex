@@ -2,17 +2,19 @@ package symdex
 
 import okay.given
 import okay.codec.Json
-import okay.mcp.{Mcp, Server, Stdio}
+import okay.mcp.{Server, Stdio}
 
 import java.nio.file.Path
 
 object Symdex:
-  val version = "0.2.0"
+  val version = "0.3.0"
 
   private val usage =
     """symdex — structural code intelligence over SemanticDB
       |
-      |  symdex serve [--root DIR]               an MCP server on stdin/stdout
+      |  symdex serve [--root DIR] [--tools a,b] [--lean]
+      |                                          an MCP server on stdin/stdout; --tools serves only
+      |                                          those, --lean sends terse schemas (fewer tokens per turn)
       |  symdex <tool> [--root DIR] key=value…   one tool call, answer on stdout
       |  symdex files [--root DIR]               the source files indexed
       |
@@ -22,10 +24,15 @@ object Symdex:
   def main(args: Array[String]): Unit =
     val (root, rest) = rootOf(args.toList)
     rest match
-      case "serve" :: Nil =>
+      case "serve" :: opts =>
         val tools = Tools(Workspace(root))
-        System.err.println(s"symdex $version: serving ${root.toAbsolutePath.normalize}")
-        Server.run(Stdio.std, Mcp.Info("symdex", version), tools.specs, tools.table).runWith
+        val only = valueOf(opts, "--tools").orElse(sys.env.get("SYMDEX_TOOLS"))
+          .map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet)
+        val lean = opts.contains("--lean") || sys.env.get("SYMDEX_LEAN").contains("1")
+        val serving = tools.serving(only, lean)
+        System.err.println(s"symdex $version: serving ${root.toAbsolutePath.normalize}, " +
+          s"${serving.tools.size} tools, ~${Tools.schemaTokens(serving.tools)} schema tokens")
+        Server.run(Stdio.std, serving).runWith
       case "files" :: Nil =>
         Workspace(root).generation.index.entries.foreach(e => println(e.source))
       case tool :: kvs if tool != "help" && tool != "--help" =>
@@ -37,6 +44,11 @@ object Symdex:
           case Some(f) =>
             println(f(okay.agent.ToolCall("cli", tool, argsOf(kvs))))
       case _ => println(usage)
+
+  private def valueOf(opts: List[String], flag: String): Option[String] =
+    opts.indexOf(flag) match
+      case -1 => None
+      case i => opts.lift(i + 1)
 
   private def rootOf(args: List[String]): (Path, List[String]) =
     val i = args.indexOf("--root")

@@ -23,6 +23,25 @@ class TestServe extends munit.FunSuite:
     assertEquals(Mcp.toolsOf(result)._1.map(_.name).toSet,
       Set("definition", "references", "implementations", "givens", "members", "modules", "status", "source", "outline", "more"))
 
+  test("a lean, narrowed server: only the tools asked for, terse schemas, fewer tokens"):
+    val full = tools.serving(None, lean = false)
+    val lean = tools.serving(Some(Set("definition", "references")), lean = true)
+    assertEquals(lean.tools.map(_.name).toSet, Set("definition", "references"))
+    assertEquals(lean.call.keySet, Set("definition", "references"))
+    assert(!Json.print(lean.tools.head.schema).contains("description"), lean.tools.head.schema)
+    val (f, l) = (Tools.schemaTokens(full.tools), Tools.schemaTokens(lean.tools))
+    assert(l * 4 < f, s"lean $l vs full $f")
+    // what is not served is absent: asking for it answers "no such tool"
+    val ask = Rpc.Request(Json.JNum(9), Mcp.ToolsCall, Mcp.callParams(ToolCall("z", "status", Json.JObj(Vector.empty))))
+    val out = !.run(Writer.run(through(Writer.of(List[Rpc](hello, ask)))(Server.serve(lean))))._1
+    val Rpc.Answer(_, r) = out(1): @unchecked
+    assert(Mcp.textOf(r).contains("no such tool"), Mcp.textOf(r))
+
+  test("every answer says what it costs"):
+    val r = tools.table("status")(ToolCall("s", "status", Json.JObj(Vector.empty)))
+    assert("""~\d+ tokens\]""".r.findFirstIn(r.linesIterator.next()).isDefined, r)
+    assert(r.contains("tool schemas: 10 tools"), r)
+
   test("tools/call answers; a missing argument is an isError answer"):
     val ok = Rpc.Request(Json.JNum(3), Mcp.ToolsCall, Mcp.callParams(
       ToolCall("x", "references", Json.JObj(Vector("query" -> Json.JStr("Use.total"))))))

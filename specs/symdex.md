@@ -105,6 +105,36 @@ Compression is for the wide ones. Not adopted: a model in the loop. A
 summary computed from a structured answer costs nothing, cannot invent
 a path, and is the same every time.
 
+### Schemas are paid every turn (from rozum's gateway)
+
+rozum has no output-compressing hook. Its gateway does the other half,
+for local models: `auto_context.rs` fits a conversation to the window
+(oldest turns dropped, an extractive or model-written note about what
+went, tool descriptions stripped as the last step), its token estimate
+counts tool results and SCHEMAS (chars / 3.5; Claude Code's 33 tools
+are ~5K tokens), and `codex_lean.rs` cuts a small model's tool set to
+the coding surface, because context size broke its tool calls before
+anything else did. What carries over to symdex:
+
+- [x] Every answer's first line carries its own cost (`~N tokens`, the
+      same chars / 3.5 estimate), so an agent sees what it pays.
+- [x] `status` prices the tool list itself: what `tools/list` costs in
+      context on every turn, full and lean.
+- [x] `serve --tools a,b,…` serves only those (okay-mcp's
+      `Serving.only`: absent, not refused) and `--lean` sends terse
+      schemas (first sentence, no per-argument prose); also
+      `SYMDEX_TOOLS` / `SYMDEX_LEAN=1`.
+
+| server | schema tokens per turn |
+|---|---|
+| all 10 tools | ~1 517 |
+| all 10, `--lean` | ~790 |
+| definition, references, source, outline | ~745 |
+| the same four, `--lean` | ~335 |
+
+Not carried over: dropping conversation turns is the client's (or a
+gateway's) job, not a tool server's.
+
 ## Freshness
 
 - [x] An index is a GENERATION: built whole, immutable, swapped in
