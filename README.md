@@ -61,29 +61,36 @@ that means several symbols is answered with the candidates.
 
 ## Use
 
-1. Make the build symdex-ready — one line in `project/plugins.sbt`:
+In the project, `project/plugins.sbt`:
 
-   ```scala
-   addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.4.0")
-   ```
+```scala
+resolvers += Resolver.url("symdex", url("https://sergey-scherbina.github.io/symdex"))(Resolver.ivyStylePatterns)
+addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.0")
+```
 
-   (until it is published: `cd sbt-symdex && sbt publishLocal` here first). It turns
-   SemanticDB on for every project. Or, without the plugin, `semanticdbEnabled := true`.
-2. Compile (`sbt Test/compile`), then register the server: `SYMDEX_HOME=/path/to/symdex sbt symdexMcp`
-   writes it into the project's `.mcp.json`. By hand, for Claude Code:
+then, once:
 
-   ```json
-   {"mcpServers": {"symdex": {"command": "/path/to/symdex/bin/symdex",
-     "args": ["serve", "--root", "."]}}}
-   ```
+```sh
+sbt symdexIndex symdexMcp symdexHook
+```
 
-3. Ask from the shell too: `bin/symdex references query=Bulk.joinSorted callers=true --root ../project`
+- the plugin turns SemanticDB on for every project, and fetches symdex itself — the
+  GitHub release of its version, downloaded once into `~/.symdex/<version>` (or a
+  checkout named by `SYMDEX_HOME`)
+- `symdexIndex` compiles every project with its tests and reports what is covered
+  and what is stale
+- `symdexMcp` adds the server to `.mcp.json`; `symdexHook` adds the hook below to
+  `.claude/settings.local.json`. Both merge into what is there and never remove anything.
+  `symdexTools := Seq(...)` and `symdexLean := true` make the server cheaper
+- from the sbt shell, any time: `symdex references query=Foo.bar callers=true`
 
-`bin/symdex` stages itself with sbt once (and again only when symdex's sources
-change); every other call is plain java, about 0.7 s. `sbt dist` zips the staged tree.
+The server is not run inside sbt — an MCP client starts it as its own process — and
+needs no compile hook: it notices a compile from the SemanticDB it rewrites.
 
-The index rebuilds itself when a compile rewrites the SemanticDB; nothing
-else needs to run. Results on okay against grep: [specs/symdex.md](specs/symdex.md#results).
+Without sbt: unzip a [release](https://github.com/sergey-scherbina/symdex/releases)
+and run `symdex/bin/symdex serve --root <project>` (Java 17+), after compiling the
+project with `semanticdbEnabled := true`. From this checkout, `bin/symdex` does the
+same and stages itself with sbt the first time.
 
 ## The hook
 
@@ -96,7 +103,7 @@ are never touched. In `.claude/settings.json`:
 
 ```json
 {"hooks": {"PostToolUse": [{"matcher": "Bash|Grep",
-  "hooks": [{"type": "command", "command": "/path/to/symdex/bin/symdex-hook"}]}]}}
+  "hooks": [{"type": "command", "command": "~/.symdex/0.5.0/symdex/bin/symdex-hook"}]}]}}
 ```
 
 `rg -n answered` over okay: 167 409 characters in, 4 745 out.
