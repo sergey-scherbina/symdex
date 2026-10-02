@@ -44,6 +44,9 @@ object Symdex:
         Hook.run(input, project.resolve(".symdex").resolve("archive")).foreach(println)
       case "files" :: Nil =>
         Workspace(root).generation.index.entries.foreach(e => println(e.source))
+      case tool :: kvs if kvs.exists(_.startsWith("--")) && tool != "serve" =>
+        System.err.println(s"unknown option ${kvs.filter(_.startsWith("--")).mkString(" ")}: tool arguments are key=value\n\n$usage")
+        sys.exit(2)
       case tool :: kvs if tool != "help" && tool != "--help" =>
         val tools = Tools(Workspace(root))
         tools.table.get(tool) match
@@ -59,9 +62,16 @@ object Symdex:
       case -1 => None
       case i => opts.lift(i + 1)
 
-  private def rootOf(args: List[String]): (Path, List[String]) =
-    val i = args.indexOf("--root")
-    if i >= 0 && i + 1 < args.size then (Path.of(args(i + 1)), args.patch(i, Nil, 2))
+  /**
+   * `--root DIR` or `--root=DIR`, anywhere. Found 2026-10-02 by an agent
+   * benchmark: `--root=DIR` was silently not a root, so the index was the
+   * working directory's — empty — and every answer was "nothing named".
+   */
+  def rootOf(args: List[String]): (Path, List[String]) =
+    val eq = args.indexWhere(_.startsWith("--root="))
+    val sp = args.indexOf("--root")
+    if eq >= 0 then (Path.of(args(eq).stripPrefix("--root=")), args.patch(eq, Nil, 1))
+    else if sp >= 0 && sp + 1 < args.size then (Path.of(args(sp + 1)), args.patch(sp, Nil, 2))
     else (Path.of(sys.env.getOrElse("SYMDEX_ROOT", ".")), args)
 
   private def argsOf(kvs: List[String]): Json =

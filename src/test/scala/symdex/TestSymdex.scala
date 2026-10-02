@@ -170,3 +170,9 @@ class TestScan extends munit.FunSuite:
     assertEquals(mod(".jvm/target/scala-3.9.0/test-meta/META-INF/semanticdb"), ("okay:test", true))
     assertEquals(mod(".native/target/scala-3.9.0/meta/META-INF/semanticdb"), ("okay (native)", false))
     assertEquals(mod("okay-spark/target/scala-3.9.0/meta/META-INF/semanticdb"), ("okay-spark", false))
+
+class TestCli extends munit.FunSuite:
+  test("--root DIR and --root=DIR both set the root"):
+    assertEquals(Symdex.rootOf(List("status", "--root", "/x")), (Path.of("/x"), List("status")))
+    assertEquals(Symdex.rootOf(List("status", "--root=/x")), (Path.of("/x"), List("status")))
+    assertEquals(Symdex.rootOf(List("--root=/y", "references", "query=a")), (Path.of("/y"), List("references", "query=a")))

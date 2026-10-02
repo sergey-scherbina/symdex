@@ -1,6 +1,6 @@
 # symdex v0 — structural code intelligence over MCP
 
-Status: v0 BUILT (2026-10-01). Boxes are checked as tests cover them;
+Status: v0.4 (2026-10-02). Boxes are checked as tests cover them;
 what changed from the draft is in Decisions.
 
 ## Why
@@ -170,15 +170,51 @@ a hand-checked answer).
 - [ ] The same tasks run by an AGENT, grep-only against symdex-only,
       counting tool calls and tokens: v0 compares answers, not agent runs.
 
-## Not yet
+## v0.4 (2026-10-02)
 
-- [ ] Exact enclosing definitions: `callers` credits a reference to the
-      nearest definition that starts before it (SemanticDB records a
-      definition's name, not its body). TASTy's spans make it exact.
-- [ ] Extension methods among a type's `members`.
-- [ ] Other languages through SCIP (v1).
+- [x] Exact enclosing definitions and bodies: TASTy (tasty-query 1.9.0
+      — 1.6.1 stops at TASTy 28.7, Scala 3.7) read per class directory,
+      joined to SemanticDB by source path and the name's position. On
+      okay: 62 638 spans from 2 460 classes, none unreadable although
+      Spark's and Flink's jars are not on symdex's classpath. Loaded per
+      module on first use (`callers` reads only the modules its
+      references are in); a server warms all of them in parallel.
+- [x] Extension methods among `members`: TASTy flags them, SemanticDB's
+      first parameter says on what. (`Fiber.isDone` under `okay.Fiber`.)
+- [x] Other languages through SCIP: any `*.scip` under the root, read
+      into the same model — descriptors as symbols (SCIP's descriptor
+      syntax is SemanticDB's), kinds mapped, `is_implementation` as
+      parents or overrides, enclosing ranges as spans. Java needs no
+      SCIP at all: scip-java's javac plugin writes SemanticDB.
+- [x] No sbt per call: `sbt stage` lays out jars and a script, which
+      `bin/symdex` re-stages only when sources change (0.7 s a call).
+- [x] `sbt-symdex`: one `addSbtPlugin` line turns SemanticDB on for the
+      build; `symdexMcp` writes the server into `.mcp.json`.
+- [x] `bin/symdex-hook`, a Claude Code PostToolUse hook for Bash and
+      Grep: the context-diet rules, a digest computed from the output
+      instead of written by a model (below).
 - [ ] Generations persisted under `.symdex/`, if a repository's build
       time ever makes a restart cost something (see Storage).
+
+### The hook
+
+`updatedToolOutput` (Claude Code's hooks reference: it replaces the
+text output of Bash, Grep and other text tools) carries a digest; the
+whole output goes to `.symdex/archive/<sha>.txt`, at most 200 kept. A
+search's digest is its files with a count each and its first hits; a
+log's is its head, tail and every error/fail/exception/warn line. Only
+outputs of 3 500+ tokens, only when the digest saves 30%, only
+searches/listings/test runs (an exact read, a diff, a pipe into `head`
+or `sed` is left alone), never an output that looks like a credential
+(it would be written to disk). A grep for an identifier adds the symdex
+call that answers it exactly. A shell wrapper passes small outputs by
+size before any JVM starts.
+
+| command (over symdex's okay checkout) | output | digest |
+|---|---|---|
+| `rg -n joinSorted okay` | 14 676 chars | 4 902 |
+| `rg -n Source okay/okay-stream/src` | 48 852 | 5 069 |
+| `rg -n answered okay` | 167 409 | 4 745 |
 
 ## What goes into okay
 
