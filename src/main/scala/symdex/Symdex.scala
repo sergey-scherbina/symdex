@@ -17,6 +17,7 @@ object Symdex:
       |                                          those, --lean sends terse schemas (fewer tokens per turn)
       |  symdex <tool> [--root DIR] key=value…   one tool call, answer on stdout
       |  symdex files [--root DIR]               the source files indexed
+      |  symdex hook                             a Claude Code PostToolUse hook (bin/symdex-hook)
       |
       |tools: definition, references, implementations, givens, members, modules, status
       |e.g.   symdex references query=Bulk.joinSorted callers=true""".stripMargin
@@ -36,6 +37,11 @@ object Symdex:
         System.err.println(s"symdex $version: serving ${root.toAbsolutePath.normalize}, " +
           s"${serving.tools.size} tools, ~${Tools.schemaTokens(serving.tools)} schema tokens")
         Server.run(Stdio.std, serving).runWith
+      case "hook" :: Nil =>
+        // a PostToolUse hook: stdin in, a decision (or nothing) out; never fails the tool call
+        val input = String(System.in.readAllBytes(), "UTF-8")
+        val project = sys.env.get("CLAUDE_PROJECT_DIR").map(Path.of(_)).getOrElse(Path.of("."))
+        Hook.run(input, project.resolve(".symdex").resolve("archive")).foreach(println)
       case "files" :: Nil =>
         Workspace(root).generation.index.entries.foreach(e => println(e.source))
       case tool :: kvs if tool != "help" && tool != "--help" =>
