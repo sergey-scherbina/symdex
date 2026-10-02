@@ -167,8 +167,8 @@ a hand-checked answer).
 
 - [x] A task set of 10 with hand-checked answers: `bench/tasks.md`.
 - [x] A results table per release in this spec's Results (v0 below).
-- [ ] The same tasks run by an AGENT, grep-only against symdex-only,
-      counting tool calls and tokens: v0 compares answers, not agent runs.
+- [x] The same tasks run by an AGENT, grep-only against symdex-only,
+      counting tool calls and tokens (v0.4 Results; one run per arm).
 
 ## v0.4 (2026-10-02)
 
@@ -262,6 +262,43 @@ size before any JVM starts.
   gaps (`Tables.orderedBy` finds `okay/Tables.Plan.orderedBy().`).
 
 ## Results
+
+### v0.4 (2026-10-02): agents, grep against symdex
+
+The ten tasks of `bench/tasks.md`, without their answers, given to two
+fresh agents of the same model over the same okay checkout. Arm A: grep,
+rg, find and file reads only. Arm B: symdex's command line, file reads
+allowed for checking, no grep. Graded against the hand-checked answers.
+One run per arm, so read the numbers as a first measurement, not a mean.
+
+| | grep (A) | symdex (B) |
+|---|---|---|
+| tool calls | 14 | 6 |
+| tokens (whole agent, its fixed overhead included) | 103 000 | 76 000 |
+| wall time | 119 s | 114 s |
+| correct | 9 of 10, plus one reference symdex could not see | 9 of 10 |
+
+Where they differed:
+- task 6 (`Fiber#answered`): A found a second reference, in okay-resilience's
+  tests, which is not in the indexed slice. An index answers for what was
+  compiled with SemanticDB; `status` says what that is, and an agent
+  should read it as the boundary of "every".
+- task 10 (what a change to okay-stream reaches): A answered from build.sbt
+  (declared dependencies), B from references (uses), as designed. B also
+  flagged that every module seemed to use `compare`: a DEFECT, fixed the
+  same hour — a `package okay` clause is a SemanticDB definition, and the
+  first file declaring it (in compare) had become the package's home.
+
+The first arm-B run answered nothing: it passed `--root=DIR`, which symdex
+silently ignored, indexing the empty working directory. Fixed (both
+spellings, and an unknown option is refused). Both defects were found
+only by an agent using the tool, which is the argument for running it.
+
+What the run shows: on the same answers, the symdex agent made fewer than
+half the tool calls and used about a quarter fewer tokens. A strong model
+with grep is accurate here — it reads around the noise — and pays for it
+in calls and context; the gap should widen with weaker models and larger
+answers, which this run does not measure.
 
 ### v0 (2026-10-01): answers, against grep, on okay
 

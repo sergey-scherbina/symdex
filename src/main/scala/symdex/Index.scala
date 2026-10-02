@@ -155,7 +155,11 @@ final class Index(val root: Path, val entries: Vector[Entry], val spans: Spans =
 
   /** module → module → how many references the first makes into the second */
   val uses: Map[String, Map[String, Int]] =
-    val home: Map[String, String] = definitions.view.mapValues(_.head.module).toMap
+    // a package is not owned by a module: every module that declares
+    // `package okay` "defines" it, and the first such file used to become
+    // the package's home, so everything "used" that module (an agent
+    // benchmark found all of okay depending on `compare`)
+    val home: Map[String, String] = definitions.view.filterKeys(s => !s.endsWith("/")).mapValues(_.head.module).toMap
     val m = mutable.HashMap.empty[String, mutable.HashMap[String, Int]]
     for e <- entries; o <- e.doc.occurrences if !o.definition do
       home.get(o.symbol).foreach { target =>

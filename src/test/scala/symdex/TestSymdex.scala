@@ -176,3 +176,18 @@ class TestCli extends munit.FunSuite:
     assertEquals(Symdex.rootOf(List("status", "--root", "/x")), (Path.of("/x"), List("status")))
     assertEquals(Symdex.rootOf(List("status", "--root=/x")), (Path.of("/x"), List("status")))
     assertEquals(Symdex.rootOf(List("--root=/y", "references", "query=a")), (Path.of("/y"), List("references", "query=a")))
+
+class TestUses extends munit.FunSuite:
+  private def entry(module: String, file: String, occs: Occurrence*): Entry =
+    val p = Path.of("/w", file)
+    Entry(DbFile(p, Path.of("/w"), module, false, 0, 0), p, file, Document(file, Vector.empty, occs.toVector, Vector.empty))
+  private def at(line: Int) = Range(line, 0, line, 4)
+
+  test("a package clause is not a dependency: every module declares the same package"):
+    val a = entry("bench", "a.scala", Occurrence(at(0), "p/", true))
+    val b = entry("core", "b.scala", Occurrence(at(0), "p/", true), Occurrence(at(2), "p/Core#", true))
+    // `import p.*` in c: a reference to the package
+    val c = entry("stream", "c.scala", Occurrence(at(0), "p/", true), Occurrence(at(1), "p/", false),
+      Occurrence(at(3), "p/Core#", false))
+    val ix = Index(Path.of("/w"), Vector(a, b, c))
+    assertEquals(ix.uses.getOrElse("stream", Map.empty), Map("core" -> 1))
