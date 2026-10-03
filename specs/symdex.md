@@ -1,6 +1,6 @@
 # symdex v0 — structural code intelligence over MCP
 
-Status: v0.4 (2026-10-02). Boxes are checked as tests cover them;
+Status: symdex 0.5.0, sbt-symdex 0.5.2 (2026-10-02). The history is CHANGELOG.md. Boxes are checked as tests cover them;
 what changed from the draft is in Decisions.
 
 ## Why
@@ -195,6 +195,39 @@ a hand-checked answer).
       instead of written by a model (below).
 - [ ] Generations persisted under `.symdex/`, if a repository's build
       time ever makes a restart cost something (see Storage).
+
+## v0.5 (2026-10-02): the plugin and the distribution
+
+- [x] sbt-symdex fetches symdex itself: the GitHub release of
+      `symdexVersion`, unpacked once into `~/.symdex/<version>`, unless
+      `symdexHome` names a checkout. A project needs no symdex checkout.
+- [x] `symdexIndex`: this build's projects compiled, main and test, then
+      `status` — the coverage question in one command.
+- [x] `symdex <tool> key=value…` as an sbt shell command (a forked JVM:
+      symdex is Scala 3, an sbt 1 plugin runs on 2.12).
+- [x] `symdexMcp` / `symdexHook` merge into `.mcp.json` /
+      `.claude/settings.local.json`; an existing entry is kept, a file
+      that does not parse is left alone with the entry printed.
+- [x] Published without Maven Central: the plugin as an Ivy repository on
+      GitHub Pages, served from `docs/` on master (RELEASING.md).
+
+Decisions:
+
+- NOT run inside sbt: an MCP server speaks on the stdin/stdout of a process
+  its client starts, and must outlive any sbt session. The plugin says how
+  to start it; it does not start it.
+- NO compile hook: symdex sees a compile from the SemanticDB it rewrites;
+  a hook would add nothing to freshness. What a project lacked was
+  COVERAGE (test SemanticDB exists only after `Test/compile`), hence
+  `symdexIndex`.
+- `symdexIndex` compiles THIS build's projects, not `inAnyProject`: run on
+  symdex itself, the latter compiled every project of okay (a `ProjectRef`
+  build) — 730 compiles across JVM, JS and Native (0.5.1).
+- The hook goes to `.claude/settings.local.json`, not `settings.json`: its
+  command is this machine's path.
+- A broken plugin version is removed, never overwritten (resolvers cache by
+  version): 0.5.1 was published unrun and withdrawn within the hour; the
+  release checklist now runs every version first.
 
 ### The hook
 

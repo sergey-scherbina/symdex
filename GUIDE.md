@@ -34,8 +34,10 @@ Then, once:
 sbt symdexIndex symdexMcp symdexHook
 ```
 
-- `symdexIndex` compiles every project, main and test, with SemanticDB on,
-  and prints what symdex covers.
+- `symdexIndex` compiles every project of this build, main and test, with
+  SemanticDB on, and prints what symdex covers. A build pulled in by
+  `ProjectRef` is not compiled by it — only what this build's projects
+  need of it, as dependencies.
 - `symdexMcp` adds the server to `.mcp.json`, where Claude Code and other
   MCP clients find it.
 - `symdexHook` adds the output-digesting hook (section 5) to
@@ -84,6 +86,41 @@ anywhere under the root. symdex reads every `*.scip` it finds.
 {"mcpServers": {"symdex": {"command": "/path/to/symdex/bin/symdex",
   "args": ["serve", "--root", "."]}}}
 ```
+
+## Languages
+
+symdex reads what compilers and indexers write; it has no parser of its own.
+What a language gets depends on what its toolchain writes.
+
+| language | read from | status | what it has |
+|---|---|---|---|
+| Scala 3 | SemanticDB + TASTy (the compiler) | tested: symdex, okay (~500 files) | everything: exact bodies, exact callers, `givens`, extension methods |
+| Java | SemanticDB (scip-java's javac plugin) | tested: a small project | definitions, references, implementations, overrides; callers and bodies approximate (no TASTy) |
+| any SCIP language | `index.scip` (its own indexer) | tested with scip-java's SCIP | whatever the indexer writes; bodies exact from SCIP's enclosing ranges |
+| TypeScript/JavaScript, Python, Rust, C/C++, Kotlin, Ruby, C#… | scip-typescript, scip-python, rust-analyzer `scip`, scip-clang, scip-java… | should work, NOT tested | as good as the indexer |
+| Scala 2, other SemanticDB writers | SemanticDB (semanticdb-scalac) | should work, NOT tested | as Java: no TASTy, so approximate callers and bodies |
+
+`givens` needs SemanticDB's *synthetics*, which Scala 3 writes; extension
+methods and exact bodies for Scala need TASTy. A language with neither
+SemanticDB nor a SCIP indexer is not supported.
+
+## Limits and scale
+
+- **Measured** on okay's slice: 512 documents, 54 549 symbols, 287 908
+  occurrences; the index builds in about 0.4 s and lives in memory; TASTy
+  for 2 460 classes reads in a few seconds, in parallel, per module on
+  first use. A one-off command-line call costs a JVM start, about 0.7 s.
+- **Not measured**: a repository ten times larger. The index is held in
+  memory and rebuilt whole (unchanged files are not re-read); its size and
+  build time grow with the occurrence count. Nothing is persisted, so a
+  server's first answer after start pays the build.
+- **Coverage is what was compiled.** A module never compiled with SemanticDB
+  is invisible, and "every reference" means every one in the index.
+  `status` names what is covered and what is stale.
+- **Prose is not code.** Docs, comments and strings are not indexed — grep
+  them.
+- **Callers** are exact where TASTy (or SCIP) gives spans; elsewhere the
+  nearest definition above the reference is named.
 
 ## 2. Asking
 
@@ -322,7 +359,7 @@ error, never ignored.
 
 | key | default | |
 |---|---|---|
-| `symdexIndex` | | compile all projects, main and test; print `status` |
+| `symdexIndex` | | compile this build's projects, main and test; print `status` |
 | `symdexMcp` | | add the server to `.mcp.json` |
 | `symdexHook` | | add the hook to `symdexHookFile` |
 | `symdex <tool> …` | | a command: one call over this build |

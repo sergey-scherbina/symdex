@@ -18,7 +18,9 @@ Built on [okay](https://github.com/sergey-scherbina/okay): its MCP server
 and JSON codec; what symdex needs that is general goes into okay.
 
 **[GUIDE.md](GUIDE.md)** is the user guide: every tool with a real example,
-settings, the hook, Java and SCIP, troubleshooting, and the literature.
+languages, limits, settings, the hook, troubleshooting, and the literature.
+[CHANGELOG.md](CHANGELOG.md) is the history; [RELEASING.md](RELEASING.md) how a
+release is made.
 
 ## How it relates to
 
@@ -77,10 +79,10 @@ then, once:
 sbt symdexIndex symdexMcp symdexHook
 ```
 
-- the plugin turns SemanticDB on for every project, and fetches symdex itself — the
+- the plugin turns SemanticDB on for every project of this build, and fetches symdex itself — the
   GitHub release of its version, downloaded once into `~/.symdex/<version>` (or a
   checkout named by `SYMDEX_HOME`)
-- `symdexIndex` compiles every project with its tests and reports what is covered
+- `symdexIndex` compiles every project of this build with its tests and reports what is covered
   and what is stale
 - `symdexMcp` adds the server to `.mcp.json`; `symdexHook` adds the hook below to
   `.claude/settings.local.json`. Both merge into what is there and never remove anything.
